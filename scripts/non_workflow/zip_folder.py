@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
 # SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 # -*- coding: utf-8 -*-
 """
-Module to zip the desired folders to be stored in google drive, or equivalent
+Module to zip the desired folders to be stored in google drive, or equivalent.
 """
 import os
 import zipfile
 from os.path import basename
 from xml.etree.ElementInclude import include
-
-from _helpers import sets_path_to_root
 
 # Zip the files from given directory that matches the filter
 
@@ -41,11 +39,8 @@ def zipFilesInDir(dirName, zipFileName, filter, include_parent=True):
 
 if __name__ == "__main__":
     # Set path to this file
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    # Required to set path to pypsa-earth
-    sets_path_to_root("pypsa-earth")
 
-# Execute zip function
-# zipFilesInDir("./resources", "resources.zip", lambda x: True, include_parent=False)
-zipFilesInDir("./data", "data.zip", lambda x: True, include_parent=False)
-# zipFilesInDir("./cutouts", "cutouts.zip", lambda x: True, include_parent=False)
+    # Execute zip function
+    # zipFilesInDir("./resources", "resources.zip", lambda x: True, include_parent=False)
+    zipFilesInDir("./data", "data.zip", lambda x: True, include_parent=False)
+    # zipFilesInDir("./cutouts", "cutouts.zip", lambda x: True, include_parent=False)

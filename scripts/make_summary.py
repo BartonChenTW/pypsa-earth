@@ -1,56 +1,61 @@
 # -*- coding: utf-8 -*-
 # SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 # -*- coding: utf-8 -*-
 """
 Creates summaries of aggregated energy and costs as ``.csv`` files.
+
 Relevant Settings
 -----------------
 .. code:: yaml
-    costs:
-        USD2013_to_EUR2013:
-        discountrate:
-        marginal_cost:
-        capital_cost:
-    electricity:
-        max_hours:
+
+    scenario:
+
 .. seealso::
     Documentation of the configuration file ``config.yaml`` at
-    :ref:`costs_cf`, :ref:`electricity_cf`
+    :ref:`toplevel_cf`
+
 Inputs
 ------
+
 Outputs
 -------
+
 Description
 -----------
 The following rule can be used to summarize the results in separate .csv files:
-.. code::
+
+.. code:: bash
+
     snakemake results/summaries/elec_s_all_lall_Co2L-3H_all
                                          clusters
                                              line volume or cost cap
                                                 - options
                                                         - all countries
-the line volume/cost cap field can be set to one of the following:
-* ``lv1.25`` for a particular line volume extension by 25%
-* ``lc1.25`` for a line cost extension by 25 %
-* ``lall`` for all evaluated caps
-* ``lvall`` for all line volume caps
-* ``lcall`` for all line cost caps
-Replacing '/summaries/' with '/plots/' creates nice colored maps of the results.
+
+The line volume/cost cap field can be set to one of the following:
+
+- ``lv1.25`` for a particular line volume extension by 25%
+- ``lc1.25`` for a line cost extension by 25 %
+- ``lall`` for all evaluated caps
+- ``lvall`` for all line volume caps
+- ``lcall`` for all line cost caps
+
+Replacing *summaries* with *plots* creates nice colored maps of the results.
 """
-import logging
 import os
 
 import pandas as pd
 import pypsa
 from _helpers import configure_logging
-from add_electricity import load_costs, update_transmission_costs
+from add_electricity import create_logger, update_transmission_costs
 
 idx = pd.IndexSlice
 
-logger = logging.getLogger(__name__)
+logger = create_logger(__name__)
+
 
 opt_name = {"Store": "e", "Line": "s", "Transformer": "s"}
 
@@ -215,7 +220,10 @@ def calculate_capacity(n, label, capacity):
 
 
 def calculate_supply(n, label, supply):
-    """calculate the max dispatch of each component at the buses where the loads are attached"""
+    """
+    Calculate the max dispatch of each component at the buses where the loads
+    are attached.
+    """
 
     load_types = n.loads.carrier.value_counts().index
 
@@ -269,7 +277,10 @@ def calculate_supply(n, label, supply):
 
 
 def calculate_supply_energy(n, label, supply_energy):
-    """calculate the total dispatch of each component at the buses where the loads are attached"""
+    """
+    Calculate the total dispatch of each component at the buses where the loads
+    are attached.
+    """
 
     load_types = n.loads.carrier.value_counts().index
 
@@ -467,7 +478,7 @@ outputs = [
 ]
 
 
-def make_summaries(networks_dict, inputs, config, country="all"):
+def make_summaries(networks_dict, inputs, country="all"):
     columns = pd.MultiIndex.from_tuples(
         networks_dict.keys(), names=["simpl", "clusters", "ll", "opts"]
     )
@@ -492,13 +503,7 @@ def make_summaries(networks_dict, inputs, config, country="all"):
         if country != "all":
             n = n[n.buses.country == country]
 
-        Nyears = n.snapshot_weightings.objective.sum() / 8760.0
-        costs = load_costs(
-            inputs.tech_costs,
-            config["costs"],
-            config["electricity"],
-            Nyears,
-        )
+        costs = pd.read_csv(inputs.tech_costs, index_col=0)
         update_transmission_costs(n, costs, simple_hvdc_costs=False)
 
         assign_carriers(n)
@@ -519,26 +524,32 @@ if __name__ == "__main__":
     if "snakemake" not in globals():
         from _helpers import mock_snakemake
 
-        os.chdir(os.path.dirname(os.path.abspath(__file__)))
         snakemake = mock_snakemake(
             "make_summary",
             simpl="",
-            clusters="10",
+            clusters="4",
             ll="copt",
-            opts="Co2L-24H",
-            country="NG",
+            opts="Co2L-4H",
+            country="all",
         )
-        network_dir = os.path.join("..", "results", "networks")
+        network_dir = ".."
     else:
-        network_dir = os.path.join("results", "networks")
+        network_dir = "."
+
+    scenario_name = snakemake.config.get("run", {}).get("name", "")
+    if scenario_name:
+        network_dir = os.path.join(network_dir, "results", scenario_name, "networks")
+    else:
+        network_dir = os.path.join(network_dir, "results", "networks")
+
     configure_logging(snakemake)
 
     def expand_from_wildcard(key):
         w = getattr(snakemake.wildcards, key)
-        return snakemake.config["scenario"][key] if w == "all" else [w]
+        return snakemake.params.scenario[key] if w == "all" else [w]
 
     if snakemake.wildcards.ll.endswith("all"):
-        ll = snakemake.config["scenario"]["ll"]
+        ll = snakemake.params.ll
         if len(snakemake.wildcards.ll) == 4:
             ll = [l for l in ll if l[0] == snakemake.wildcards.ll[0]]
     else:
@@ -557,7 +568,6 @@ if __name__ == "__main__":
     dfs = make_summaries(
         networks_dict,
         snakemake.input,
-        snakemake.config,
         country=snakemake.wildcards.country,
     )
 

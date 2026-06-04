@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 #
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: AGPL-3.0-or-later
 
 name: pypsa-earth
 channels:
@@ -8,77 +8,76 @@ channels:
 - bioconda
 - gurobi
 dependencies:
-- python>=3.8
+- python>=3.10, <3.12  # 3.12 has weird issues with snakemake https://github.com/snakemake/snakemake/issues/2480
 - pip
-- mamba   # esp for windows build
 
-- pypsa>=0.21.3
-# - atlite>=0.2.4  # until https://github.com/PyPSA/atlite/issues/244 is not merged
+- pypsa>=0.25.1, <=0.30.3
+- atlite>=0.4.1
 - dask
-- powerplantmatching>=0.5.6
-- earth-osm>=0.0.8  # until 0.1.0
-- atlite
+- powerplantmatching>=0.8
+- earth-osm>=2.3.post1
 
-  # Dependencies of the workflow itself
+# Dependencies of the workflow itself
 - xlrd
 - openpyxl
 - seaborn
-- snakemake-minimal
+- snakemake-minimal<8
 - memory_profiler
-- ruamel.yaml
+- ruamel.yaml<=0.17.26
 - pytables
+- pyscipopt
 - lxml
-- numpy
+- numpy<2
 - pandas
-- geopandas>=0.11.0
-- fiona!=1.8.22
-- xarray
+- geopandas>=1
+- fiona>=1.10
+- xarray>=2023.11.0, <=2025.01.2
 - netcdf4
+- libgdal-netcdf
 - networkx
-- scipy
+- scipy<1.16
 - pydoe2
-- shapely>=2
+- shapely!=2.0.4
 - pre-commit
-- pyomo
-- matplotlib<=3.5.2
+- matplotlib
 - reverse-geocode
 - country_converter
+- pyogrio
+- numba
+- py7zr
+- tsam>=1.1.0
+- fake-useragent
+- chaospy
+- geopy
+- tqdm
+- pytz
 
-  # Keep in conda environment when calling ipython
-- ipython
-  # Jupyter notebook requirement
+# Cloud download
+# - googledrivedownloader  # Commented until https://github.com/conda-forge/googledrivedownloader-feedstock/pull/7 is merged
+
+# Jupyter notebook requirement
 - ipykernel
+- ipython
 - jupyterlab
 
-  # GIS dependencies:
+# GIS dependencies:
 - cartopy
-- descartes
-- rasterio!=1.2.10
+- rasterio
 - rioxarray
 
- # Plotting
+# Plotting
 - geoviews
 - hvplot
 - graphviz
 - contextily
-- graphviz
-
-  # PyPSA-Eur-Sec Dependencies
-- geopy
-- tqdm
-- pytz
-- country_converter
-
-  # Cloud download
-# - googledrivedownloader  # Commented until https://github.com/ndrplz/google-drive-downloader/pull/28 is merged: PR installed using pip
 
 # Default solver for tests (required for CI)
 - glpk
-- ipopt<3.13.3
 - gurobi
 
+# Command Line Interface
+- rich
+
 - pip:
-  - git+https://github.com/davide-f/google-drive-downloader@master  # google drive with fix for virus scan
-  - git+https://github.com/FRESNA/vresutils@master  # until new pip release > 0.3.1 (strictly)
-  - tsam>=1.1.0
-  - chaospy  # lastest version only available on pip
+  - currencyconverter
+  - googledrivedownloader>=1.1
