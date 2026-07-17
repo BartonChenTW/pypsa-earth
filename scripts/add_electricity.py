@@ -97,6 +97,11 @@ idx = pd.IndexSlice
 
 logger = create_logger(__name__)
 
+IRENASTAT_DIRECT_URL = (
+    "https://zenodo.org/records/10952917/files/"
+    "IRENASTAT_capacities_2000-2023.csv?download=1"
+)
+
 
 def _add_missing_carriers_from_costs(n, costs, carriers):
     missing_carriers = pd.Index(carriers).difference(n.carriers.index)
@@ -446,8 +451,21 @@ def get_irena_targets_for_carrier(
     if not countries or not tech_map:
         return pd.Series(dtype=float)
 
-    # Read IRENASTAT exactly as in the legacy implementation
-    capacities = pm.data.IRENASTAT().powerplant.convert_country_to_alpha2()
+    irena_config = pm.get_config()
+    irena_config["IRENA"]["url"] = IRENASTAT_DIRECT_URL
+    try:
+        capacities = (
+            pm.data.IRENASTAT(update=False, config=irena_config)
+            .powerplant.convert_country_to_alpha2()
+        )
+    except pd.errors.ParserError as exc:
+        raise RuntimeError(
+            "Could not parse the cached IRENASTAT CSV. If Zenodo returned a "
+            "403/HTML page, manually download "
+            f"{IRENASTAT_DIRECT_URL} and replace the cached file at "
+            r"C:\Users\chyi\AppData\Roaming\powerplantmatching\data\in"
+            r"\IRENASTAT_capacities_2000-2023.csv."
+        ) from exc
 
     missing = list(set(countries).difference(capacities.Country.unique()))
     if missing:
