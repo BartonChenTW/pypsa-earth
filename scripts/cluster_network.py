@@ -161,6 +161,11 @@ def normed(x):
     return (x / x.sum()).fillna(0.0)
 
 
+def _is_gurobi_limit_error(exc):
+    message = str(exc).lower()
+    return "request denied" in message and "use limit" in message
+
+
 def weighting_for_country(n, x):
     conv_carriers = {"OCGT", "CCGT", "PHS", "hydro"}
     conv_carriers_pattern = "|".join(conv_carriers)
@@ -360,7 +365,17 @@ def distribute_clusters(
             f"The configured solver `{solver_name}` does not support quadratic objectives. Falling back to `scip`."
         )
         solver_name = "scip"
-    m.solve(solver_name=solver_name)
+    try:
+        m.solve(solver_name=solver_name)
+    except Exception as exc:
+        if solver_name != "gurobi" or not _is_gurobi_limit_error(exc):
+            raise
+
+        logger.warning(
+            "Gurobi token server denied a new session for cluster distribution "
+            "(likely all seats are in use). Retrying with `scip`."
+        )
+        m.solve(solver_name="scip")
     return m.solution["n"].to_series().astype(int)
 
 
