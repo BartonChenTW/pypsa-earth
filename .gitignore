@@ -80,3 +80,5 @@ site/
 
 # Exclude the environment folder
 .venv
+
+log.md
