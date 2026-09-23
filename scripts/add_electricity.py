@@ -382,6 +382,23 @@ def aggregate_ppl_by_bus_carrier_year(ppl: pd.DataFrame) -> pd.DataFrame:
     return ppl_grouped
 
 
+def check_profile_covers_snapshots(profile_index, snapshots, name):
+    """
+    Raise if a weather-based profile does not cover all network snapshots.
+
+    Snapshots outside the profile would silently get NaN, which ends up as
+    full availability (p_max_pu = 1.0) for renewables and ror.
+    """
+    missing = snapshots.difference(profile_index)
+    if not missing.empty:
+        raise ValueError(
+            f"Profile '{name}' covers {profile_index.min()} to {profile_index.max()}, "
+            f"but {len(missing)} of {len(snapshots)} network snapshots lie outside it "
+            f"(first missing: {missing[0]}). The cutout must cover the snapshot range: "
+            "rebuild it or set `atlite.cutouts.<cutout>.time`."
+        )
+
+
 def aggregate_inflow_by_group(
     ppl: pd.DataFrame,
     ppl_grouped: pd.DataFrame,
@@ -634,6 +651,7 @@ def attach_wind_and_solar(
                 caps_existing = pd.Series(0.0, index=ds.indexes["bus"])
 
             p_max_pu = ds["profile"].transpose("time", "bus").to_pandas()
+            check_profile_covers_snapshots(p_max_pu.index, n.snapshots, carrier)
             p_nom_max = ds["p_nom_max"].to_pandas()
             weight = ds["weight"].to_pandas()
 
@@ -957,6 +975,7 @@ def attach_hydro(
                     .transpose("time", "name")
                     .to_pandas()
                 )
+                check_profile_covers_snapshots(inflow_t.index, n.snapshots, "hydro")
 
                 # Aggregate inflow by (bus, carrier, grouping_year)
                 inflow_agg = aggregate_inflow_by_group(ppl, ppl_grouped, inflow_t)
