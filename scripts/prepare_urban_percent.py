@@ -24,10 +24,17 @@ def download_urban_percent():
     https://unctadstat.unctad.org/datacentre/
     as a .7z file. The dataset contains urban percent for most countries from 1950 and predictions until 2050.
     """
-    url = "https://unctadstat-api.unctad.org/api/reportMetadata/US.PopTotal/bulkfile/355/en"
+    # The bulk file id changes when UNCTAD republishes the dataset (355 no longer exists),
+    # so look up the current id first and fall back to the last known one.
+    api = "https://unctadstat-api.unctad.org/api/reportMetadata/US.PopTotal"
+    try:
+        file_id = requests.get(f"{api}/bulkfiles/en", timeout=60).json()[0]["fileId"]
+    except Exception:
+        file_id = 2301
+    url = f"{api}/bulkfile/{file_id}/en"
 
     # Make a GET request to the URL
-    response = requests.get(url)
+    response = requests.get(url, timeout=300)
 
     # Check if the request was successful (status code 200)
     if response.status_code == 200:
@@ -63,7 +70,7 @@ def download_urban_percent():
         os.remove(csv_filename)
 
     else:
-        print(f"Failed to download file: Status code {response.status_code}")
+        raise RuntimeError(f"Failed to download {url}: status code {response.status_code}")
 
     return urban_percent_orig
 
@@ -90,7 +97,9 @@ if __name__ == "__main__":
 
     # Add ISO2 country code for each country
     cc = coco.CountryConverter()
-    Economy_Label = pd.Series(df["Economy Label"])
+    # "China, Taiwan Province of" converts to both CN and TW and would be dropped below as a
+    # multi-country name, so map it to Taiwan first.
+    Economy_Label = pd.Series(df["Economy Label"]).replace({"China, Taiwan Province of": "Taiwan"})
     df["country"] = cc.pandas_convert(
         series=Economy_Label, to="ISO2", not_found="not found"
     )

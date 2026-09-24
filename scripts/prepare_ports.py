@@ -28,7 +28,16 @@ def download_ports():
     as a csv file that is updated monthly as mentioned on the webpage. The dataset contains 3711 ports.
     """
     fn = "https://msi.nga.mil/api/publications/download?type=view&key=16920959/SFH00000/UpdatedPub150.csv"
-    wpi_csv = pd.read_csv(fn, index_col=0)
+    local = os.path.join(BASE_DIR, "data", "ports", "UpdatedPub150.csv")
+    try:
+        wpi_csv = pd.read_csv(fn, index_col=0)
+    except Exception as e:
+        # msi.nga.mil uses a certificate chain that Python's certifi bundle may not trust
+        # (SSL: CERTIFICATE_VERIFY_FAILED). Fall back to a copy downloaded by other means,
+        # e.g. curl, which uses the operating system's certificate store.
+        if not os.path.exists(local):
+            raise RuntimeError(f"Could not download {fn} ({e}); download it manually to {local}") from e
+        wpi_csv = pd.read_csv(local, index_col=0)
 
     return wpi_csv
 

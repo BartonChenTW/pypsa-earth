@@ -145,7 +145,10 @@ if __name__ == "__main__":
 
     # Create a column with iso2 country code
     cc = coco.CountryConverter()
-    Country = pd.Series(df["Country or Area"])
+    # The UN Energy Statistics Database reports Taiwan as "Other Asia", which has no ISO2
+    # code and would be dropped (checked for 2019: gross electricity production 274.2 TWh,
+    # nuclear 3,872 MW, pumped hydro 2,602 MW, i.e. Taiwan's figures).
+    Country = pd.Series(df["Country or Area"]).replace({"Other Asia": "Taiwan"})
 
     df["country"] = cc.pandas_convert(series=Country, to="ISO2", not_found="not found")
 
