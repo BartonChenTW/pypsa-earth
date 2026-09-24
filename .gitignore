@@ -87,3 +87,5 @@ log.md
 !pypsa_tw/data/**/*.csv
 !pypsa_tw/data/**/*.zip
 !docs/data/*.csv
+# Taiwan future-year fleets (pypsa_tw/data/build_future_powerplants.py)
+!data/custom_powerplants_tw*.csv
