@@ -82,3 +82,7 @@ site/
 .venv
 
 log.md
+# Taiwan source data, mappings and snapshots are tracked on purpose
+# (the global *.csv / *.zip rules above would drop them).
+!pypsa_tw/data/**/*.csv
+!pypsa_tw/data/**/*.zip
