@@ -270,6 +270,23 @@ if __name__ == "__main__":
 
     add_build_year_to_new_assets(n, year)
 
+    # Taiwan fork: each horizon's prenetwork is rebuilt from today's fleet, and add_brownfield
+    # only retires assets of the previous horizon (n_p). Retire the prenetwork's existing
+    # (non-extendable) assets past their lifetime too, so old plants close on schedule.
+    # Hydro, run-of-river and pumped hydro are kept (dams are refurbished, not retired).
+    keep_carriers = ["hydro", "ror", "PHS"]
+    for c in n.iterate_components(["Link", "Generator", "Store", "StorageUnit"]):
+        ext = c.df["e_nom_extendable" if c.name == "Store" else "p_nom_extendable"]
+        old = c.df.index[
+            ~ext
+            & (c.df.build_year > 0)
+            & (c.df.build_year + c.df.lifetime < year)
+            & ~c.df.carrier.isin(keep_carriers)
+        ]
+        if len(old):
+            logger.info(f"Retiring {len(old)} existing {c.name}s past their lifetime in {year}")
+            n.mremove(c.name, old)
+
     n_p = pypsa.Network(snakemake.input.network_p)
 
     add_brownfield(n, n_p, year)

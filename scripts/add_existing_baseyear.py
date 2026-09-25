@@ -56,6 +56,14 @@ def add_build_year_to_new_assets(n: pypsa.Network, baseyear: int):
         # add -baseyear to name
         rename = pd.Series(c.df.index, c.df.index)
         rename[assets] += f"-{str(baseyear)}"
+        # Taiwan fork: an existing asset can already carry the new name, e.g. plants grouped in
+        # the baseyear's build-period bin ("TW0 1 CCGT-2030") next to the new-build option
+        # "TW0 1 CCGT". Duplicate names make PyPSA drop the whole component table on reading,
+        # so keep the existing one apart as "... existing".
+        clash = rename.index[
+            ~rename.index.isin(assets) & rename.index.isin(rename[assets].values)
+        ]
+        rename[clash] = rename[clash] + " existing"
         c.df.rename(index=rename, inplace=True)
 
         # rename time-dependent

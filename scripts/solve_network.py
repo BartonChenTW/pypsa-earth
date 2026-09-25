@@ -646,8 +646,13 @@ def _add_land_use_constraint(n):
     # warning: this will miss existing offwind which is not classed AC-DC and has carrier 'offwind'
 
     for carrier in ["solar", "solar rooftop", "onwind", "offwind-ac", "offwind-dc"]:
+        # Taiwan fork: count only fixed (non-extendable) capacity as existing. In the base year
+        # the existing capacity sits on the extendable generator itself (p_nom = p_nom_min),
+        # so subtracting it from that generator's own p_nom_max removed it twice (e.g. 8 GW of
+        # the planned offshore wind in 2030).
+        fixed = (n.generators.carrier == carrier) & ~n.generators.p_nom_extendable
         existing = (
-            n.generators.loc[n.generators.carrier == carrier, "p_nom"]
+            n.generators.loc[fixed, "p_nom"]
             .groupby(n.generators.bus.map(n.buses.location))
             .sum()
         )

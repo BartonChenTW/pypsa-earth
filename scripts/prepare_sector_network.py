@@ -56,6 +56,13 @@ def add_carrier_buses(n, carrier, nodes=None):
 
     n.madd("Bus", nodes, location=location, carrier=carrier)
 
+    # Taiwan fork: biomass must come from the limited biomass potential (add_biomass). When
+    # existing biomass plants are converted to links, this function would otherwise give the
+    # solid-biomass buses an unlimited zero-carbon fuel supply (e.g. 1,400 TWh/yr in a 2050
+    # net-zero run against a 40 TWh/yr potential).
+    if carrier == "biomass":
+        return
+
     # initial fossil reserves
     e_initial = (snakemake.params.fossil_reserves).get(carrier, 0) * 1e6
     # capital cost could be corrected to e.g. 0.2 EUR/kWh * annuity and O&M
