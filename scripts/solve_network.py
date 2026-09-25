@@ -1042,26 +1042,122 @@ def add_lossy_bidirectional_link_constraints(n: pypsa.components.Network) -> Non
     n.model.add_constraints(lhs == 0, name="Link-bidirectional_sync")
 
 
+def _current_horizon():
+    try:
+        return int(snakemake.wildcards.get("planning_horizons"))
+    except (NameError, TypeError, ValueError):
+        return None
+
+
+def _for_horizon(value, horizon):
+    """A bound is a number (every horizon) or {year: number}; None when unset."""
+    if isinstance(value, dict):
+        return value.get(horizon, value.get(str(horizon)))
+    return value
+
+
 def add_nuclear_total_limit(n, config):
     """
-    Taiwan fork: optional caps on the total capacity of a generator carrier, counting what
-    earlier horizons built (fixed) plus new capacity in this horizon, so a myopic chain cannot
-    exceed the cap over time. solving.options.capacity_max_total_MW: {carrier: MW}, and
-    solving.options.nuclear_max_total_MW as a shorthand for nuclear.
+    Taiwan fork: optional bounds on the total capacity of a carrier or a group of carriers,
+    counting what earlier horizons built (fixed) plus new capacity in this horizon, so a
+    myopic chain cannot exceed a cap over time.
+
+    - solving.options.capacity_max_total_MW: {carrier: MW} (every horizon);
+      nuclear_max_total_MW is a shorthand for nuclear.
+    - solving.options.capacity_total_MW: {name: {carriers: [...], min: ..., max: ...}}, where
+      min and max are MW or {planning horizon: MW}. Generators count p_nom; links count
+      electric output (p_nom * efficiency).
     """
     opts = config["solving"]["options"]
-    caps = dict(opts.get("capacity_max_total_MW") or {})
+    horizon = _current_horizon()
+    groups = {}
+    for carrier, cap in (opts.get("capacity_max_total_MW") or {}).items():
+        groups[carrier] = {"carriers": [carrier], "max": cap}
     if opts.get("nuclear_max_total_MW") is not None:
-        caps["nuclear"] = opts["nuclear_max_total_MW"]
-    for carrier, cap in caps.items():
-        sel = n.generators.carrier == carrier
-        ext = n.generators.index[sel & n.generators.p_nom_extendable]
-        if ext.empty:
+        groups["nuclear"] = {"carriers": ["nuclear"], "max": opts["nuclear_max_total_MW"]}
+    groups.update(opts.get("capacity_total_MW") or {})
+
+    for name, spec in groups.items():
+        carriers = spec["carriers"]
+        lo = _for_horizon(spec.get("min"), horizon)
+        hi = _for_horizon(spec.get("max"), horizon)
+        if lo is None and hi is None:
             continue
-        fixed = float(n.generators.loc[sel & ~n.generators.p_nom_extendable, "p_nom"].sum())
-        lhs = n.model["Generator-p_nom"].loc[ext].sum()
-        n.model.add_constraints(lhs <= max(cap - fixed, 0.0), name=f"{carrier}_total_limit")
-        logger.info(f"{carrier} capped at {cap:.0f} MW in total ({fixed:.0f} MW already built)")
+        g, l = n.generators, n.links
+        g_sel, l_sel = g.carrier.isin(carriers), l.carrier.isin(carriers)
+        g_ext = g.index[g_sel & g.p_nom_extendable]
+        l_ext = l.index[l_sel & l.p_nom_extendable]
+        if g_ext.empty and l_ext.empty:
+            continue
+        fixed = float(g.loc[g_sel & ~g.p_nom_extendable, "p_nom"].sum()) + float(
+            (l.p_nom * l.efficiency)[l_sel & ~l.p_nom_extendable].sum()
+        )
+        terms = []
+        if not g_ext.empty:
+            terms.append(n.model["Generator-p_nom"].loc[g_ext].sum())
+        if not l_ext.empty:
+            eff = xr.DataArray(l.loc[l_ext, "efficiency"].values, coords={"Link-ext": l_ext})
+            terms.append((n.model["Link-p_nom"].loc[l_ext] * eff).sum())
+        lhs = sum(terms[1:], terms[0])
+        key = name.replace(" ", "_")
+        if hi is not None:
+            n.model.add_constraints(lhs <= max(hi - fixed, 0.0), name=f"{key}_total_limit")
+        if lo is not None and lo > fixed:
+            n.model.add_constraints(lhs >= lo - fixed, name=f"{key}_total_floor")
+        logger.info(
+            f"{name}: total capacity bounds min {lo} / max {hi} MW ({fixed:.0f} MW already built)"
+        )
+
+
+def _annual_generation(n, carriers):
+    """Linear expression of the annual electricity output of the given carriers: generators and
+    storage units on electricity buses (AC, low voltage), and links whose bus1 is one
+    (output = efficiency * p). Fuel-supply generators share carrier names ("coal", "oil") and
+    sit on fuel buses, so they are left out."""
+    m = n.model
+    w = n.snapshot_weightings.generators
+    w = xr.DataArray(w.values, coords={"snapshot": w.index})
+    terms = []
+    elec = n.buses.index[n.buses.carrier.isin(["AC", "low voltage"])]
+    gens = n.generators.index[n.generators.carrier.isin(carriers) & n.generators.bus.isin(elec)]
+    if not gens.empty:
+        terms.append((m["Generator-p"].loc[:, gens] * w).sum())
+    sus = n.storage_units.index[n.storage_units.carrier.isin(carriers) & n.storage_units.bus.isin(elec)]
+    if not sus.empty:
+        terms.append((m["StorageUnit-p_dispatch"].loc[:, sus] * w).sum())
+    links = n.links.index[n.links.carrier.isin(carriers) & n.links.bus1.isin(elec)]
+    if not links.empty:
+        eff = xr.DataArray(n.links.loc[links, "efficiency"].values, coords={"Link": links})
+        terms.append((m["Link-p"].loc[:, links] * eff * w).sum())
+    if not terms:
+        return None
+    return sum(terms[1:], terms[0])
+
+
+def add_generation_shares(n, config):
+    """
+    Taiwan fork: optional bounds on shares of annual electricity generation, e.g. the power
+    mix of Taiwan's 2050 net-zero pathway. solving.options.generation_share:
+    {planning horizon: {group: {carriers: [...], min: share, max: share}}}. The shares are
+    of the groups' combined generation, so the groups should cover all supply.
+    """
+    horizon = _current_horizon()
+    spec = _for_horizon(config["solving"]["options"].get("generation_share") or {}, horizon)
+    if not spec:
+        return
+    exprs = {g: _annual_generation(n, s["carriers"]) for g, s in spec.items()}
+    exprs = {g: e for g, e in exprs.items() if e is not None}
+    parts = list(exprs.values())
+    total = sum(parts[1:], parts[0])
+    for group, s in spec.items():
+        if group not in exprs:
+            continue
+        key = group.replace(" ", "_")
+        if s.get("min") is not None:
+            n.model.add_constraints(exprs[group] - s["min"] * total >= 0, name=f"{key}_share_min")
+        if s.get("max") is not None:
+            n.model.add_constraints(exprs[group] - s["max"] * total <= 0, name=f"{key}_share_max")
+        logger.info(f"{group}: generation share {s.get('min')} to {s.get('max')}")
 
 
 def extra_functionality(n, snapshots):
@@ -1094,6 +1190,7 @@ def extra_functionality(n, snapshots):
     add_battery_constraints(n)
     add_lossy_bidirectional_link_constraints(n)
     add_nuclear_total_limit(n, config)
+    add_generation_shares(n, config)
 
     if snakemake.config["sector"]["chp"]:
         logger.info("setting CHP constraints")

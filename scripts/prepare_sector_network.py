@@ -3288,6 +3288,88 @@ def convert_conventional_generators_to_links(
         n.carriers.loc[fuel_carrier, "co2_emissions"] = 0
 
 
+def add_taiwan_power_options(n: pypsa.Network, costs: pd.DataFrame) -> None:
+    """
+    Taiwan fork: power options that Taiwan's 2050 net-zero pathway relies on and the sector
+    model lacks (sector.taiwan_power, all optional, all extendable at every node):
+
+    - gas_cc: stand-alone gas combined cycle with post-combustion capture ("CCGT CC"), from
+      the CCGT cost row scaled by investment_factor and efficiency_factor; the captured
+      share (capture_rate) goes to the CO2 store, the rest to the atmosphere.
+    - hydrogen_ccgt: hydrogen-fired combined cycle ("H2 CCGT") at the CCGT cost and
+      efficiency.
+    - ammonia_import_price_EUR_per_MWh: ammonia imports (LHV) at a fixed landed price,
+      unlimited, at every ammonia bus; it can be cracked to hydrogen (existing cracker).
+    - ammonia_ccgt: ammonia-fired combined cycle ("NH3 CCGT"), CCGT cost, CCGT efficiency
+      times efficiency_factor.
+    """
+    tw = options.get("taiwan_power") or {}
+    if not tw:
+        return
+    nodes = spatial.nodes
+    ccgt = costs.loc["CCGT"]
+
+    def add_ccgt_like(carrier, bus0, efficiency, investment_factor=1.0, **extra):
+        if carrier not in n.carriers.index:
+            n.add("Carrier", carrier)
+        # p_nom of a link is fuel input: per-MW_el costs are scaled by efficiency
+        n.madd(
+            "Link",
+            nodes + " " + carrier,
+            bus0=bus0,
+            bus1=nodes,
+            carrier=carrier,
+            p_nom_extendable=True,
+            efficiency=efficiency,
+            capital_cost=ccgt["fixed"] * investment_factor * efficiency,
+            marginal_cost=ccgt["VOM"] * efficiency,
+            lifetime=ccgt["lifetime"],
+            **extra,
+        )
+        logger.info(f"Taiwan option {carrier}: efficiency {efficiency:.3f}")
+
+    gas_cc = tw.get("gas_cc")
+    if gas_cc:
+        rate = gas_cc["capture_rate"]
+        intensity = costs.at["gas", "CO2 intensity"]
+        add_ccgt_like(
+            "CCGT CC",
+            spatial.gas.df.loc[nodes, "nodes"].values,
+            ccgt["efficiency"] * gas_cc["efficiency_factor"],
+            gas_cc["investment_factor"],
+            bus2="co2 atmosphere",
+            bus3=spatial.co2.df.loc[nodes, "nodes"].values,
+            efficiency2=intensity * (1 - rate),
+            efficiency3=intensity * rate,
+        )
+
+    if tw.get("hydrogen_ccgt"):
+        add_ccgt_like("H2 CCGT", nodes + " H2", ccgt["efficiency"])
+
+    has_ammonia = options["ammonia"]["enable"]
+    price = tw.get("ammonia_import_price_EUR_per_MWh")
+    if price is not None and has_ammonia:
+        if "NH3 import" not in n.carriers.index:
+            n.add("Carrier", "NH3 import")
+        n.madd(
+            "Generator",
+            spatial.ammonia.nodes + " import",
+            bus=spatial.ammonia.nodes,
+            carrier="NH3 import",
+            p_nom_extendable=True,
+            marginal_cost=price,
+        )
+        logger.info(f"Ammonia imports at {price} EUR/MWh")
+
+    nh3_ccgt = tw.get("ammonia_ccgt")
+    if nh3_ccgt and has_ammonia:
+        add_ccgt_like(
+            "NH3 CCGT",
+            spatial.ammonia.df.loc[nodes, "nodes"].values,
+            ccgt["efficiency"] * nh3_ccgt["efficiency_factor"],
+        )
+
+
 def remove_carrier_related_components(n: pypsa.Network, carriers_to_drop: list) -> None:
     """
     Removes carrier related components, such as "Carrier", "Generator", "Link", "Store", and "Storage Unit"
@@ -3443,6 +3525,9 @@ if __name__ == "__main__":
 
     if options["ammonia"]["enable"]:
         add_ammonia(n, costs, industrial_demand_fn=snakemake.input.industrial_demand)
+
+    # Taiwan fork: gas with capture, hydrogen/ammonia power, ammonia imports
+    add_taiwan_power_options(n, costs)
 
     if enable["shipping"]:
         add_shipping(
