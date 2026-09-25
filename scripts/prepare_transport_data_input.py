@@ -163,11 +163,31 @@ if __name__ == "__main__":
 
     CO2_emissions = download_CO2_emissions().copy()
 
+    # Taiwan fork: optional per-country overrides (config key transport_data_override,
+    # e.g. {"TW": {"number cars": 7200000}}) for countries the WHO/Wikipedia sources lack.
+    overrides = snakemake.config.get("transport_data_override", {}) or {}
+
+    def apply_overrides(path):
+        if not overrides:
+            return
+        df = pd.read_csv(path)
+        for country, values in overrides.items():
+            if country not in set(df["country"]):
+                df.loc[len(df), "country"] = country
+            for col, v in values.items():
+                df.loc[df["country"] == country, col] = v
+        df["average fuel efficiency"] = df["average fuel efficiency"].fillna(
+            df["average fuel efficiency"].mean()
+        )
+        df.to_csv(path, sep=",", encoding="utf-8", header=True, index=False)
+        print(f"Applied transport data overrides for {list(overrides)}")
+
     if nbr_vehicles.empty or CO2_emissions.empty:
         # In case one of the urls is not working, we can use the hard-coded data
         src = BASE_DIR + "/data/temp_hard_coded/transport_data.csv"
         dest = snakemake.output.transport_data_input
         shutil.copy(src, dest)
+        apply_overrides(dest)
     else:
         # Join the DataFrames by the 'country' column to prepare the tabular transport_data,
         # which will be saved as transport_data.csv in the resource folder and used
@@ -198,3 +218,4 @@ if __name__ == "__main__":
             header="true",
             index=False,
         )
+        apply_overrides(snakemake.output.transport_data_input)

@@ -807,6 +807,16 @@ def attach_conventional_generators(
     if extendable_conventional:
         for carrier in extendable_conventional:
             carrier_buses = ppl[ppl.carrier == carrier]["bus"].unique()
+            # Taiwan fork: new nuclear has no bus when no nuclear plant is left in the fleet.
+            # Optional candidate sites [lat, lon] (electricity.nuclear_candidate_sites) are
+            # mapped to their nearest AC bus.
+            sites = snakemake.params.electricity.get("nuclear_candidate_sites", [])
+            if carrier == "nuclear" and len(carrier_buses) == 0 and sites:
+                ac = n.buses[n.buses.carrier == "AC"]
+                carrier_buses = pd.Index(
+                    sorted({((ac.x - lon) ** 2 + (ac.y - lat) ** 2).idxmin() for lat, lon in sites})
+                )
+                logger.info(f"New nuclear offered at candidate buses {list(carrier_buses)}")
             n.madd(
                 "Generator",
                 carrier_buses,
