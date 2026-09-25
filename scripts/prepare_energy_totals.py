@@ -81,6 +81,15 @@ if __name__ == "__main__":
         fill_country_data(fuel_shares, country, label="fuel share")
         fill_country_data(district_heating, country, label="heating")
 
+    # Taiwan fork: optional per-horizon override of a country's non-zero growth rates
+    # (config demand_growth_override: {country: {planning year: CAGR from the base year}}).
+    for country, years in (snakemake.config.get("demand_growth_override") or {}).items():
+        v = years.get(int(snakemake.wildcards.planning_horizons))
+        if v is not None and country in growth_factors_cagr.index:
+            row = growth_factors_cagr.loc[country]
+            growth_factors_cagr.loc[country] = row.where(row == 0, v)
+            _logger.info(f"Growth rates of {country} set to {v} for {snakemake.wildcards.planning_horizons}")
+
     growth_factors = calculate_end_values(growth_factors_cagr)
     efficiency_gains = calculate_end_values(efficiency_gains_cagr)
 

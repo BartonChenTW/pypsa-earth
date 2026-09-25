@@ -645,7 +645,7 @@ def add_land_use_constraint(n):
 def _add_land_use_constraint(n):
     # warning: this will miss existing offwind which is not classed AC-DC and has carrier 'offwind'
 
-    for carrier in ["solar", "solar rooftop", "onwind", "offwind-ac", "offwind-dc"]:
+    for carrier in ["solar", "solar rooftop", "onwind", "offwind-ac", "offwind-dc", "offwind-float"]:
         # Taiwan fork: count only fixed (non-extendable) capacity as existing. In the base year
         # the existing capacity sits on the extendable generator itself (p_nom = p_nom_min),
         # so subtracting it from that generator's own p_nom_max removed it twice (e.g. 8 GW of
@@ -1042,6 +1042,28 @@ def add_lossy_bidirectional_link_constraints(n: pypsa.components.Network) -> Non
     n.model.add_constraints(lhs == 0, name="Link-bidirectional_sync")
 
 
+def add_nuclear_total_limit(n, config):
+    """
+    Taiwan fork: optional caps on the total capacity of a generator carrier, counting what
+    earlier horizons built (fixed) plus new capacity in this horizon, so a myopic chain cannot
+    exceed the cap over time. solving.options.capacity_max_total_MW: {carrier: MW}, and
+    solving.options.nuclear_max_total_MW as a shorthand for nuclear.
+    """
+    opts = config["solving"]["options"]
+    caps = dict(opts.get("capacity_max_total_MW") or {})
+    if opts.get("nuclear_max_total_MW") is not None:
+        caps["nuclear"] = opts["nuclear_max_total_MW"]
+    for carrier, cap in caps.items():
+        sel = n.generators.carrier == carrier
+        ext = n.generators.index[sel & n.generators.p_nom_extendable]
+        if ext.empty:
+            continue
+        fixed = float(n.generators.loc[sel & ~n.generators.p_nom_extendable, "p_nom"].sum())
+        lhs = n.model["Generator-p_nom"].loc[ext].sum()
+        n.model.add_constraints(lhs <= max(cap - fixed, 0.0), name=f"{carrier}_total_limit")
+        logger.info(f"{carrier} capped at {cap:.0f} MW in total ({fixed:.0f} MW already built)")
+
+
 def extra_functionality(n, snapshots):
     """
     Collects supplementary constraints which will be passed to
@@ -1071,6 +1093,7 @@ def extra_functionality(n, snapshots):
 
     add_battery_constraints(n)
     add_lossy_bidirectional_link_constraints(n)
+    add_nuclear_total_limit(n, config)
 
     if snakemake.config["sector"]["chp"]:
         logger.info("setting CHP constraints")

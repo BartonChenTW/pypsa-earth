@@ -120,6 +120,14 @@ if __name__ == "__main__":
 
         cagr = cagr[cagr.index.isin(countries)]
 
+        # Taiwan fork: optional per-horizon override of a country's non-zero growth rates
+        # (config demand_growth_override, same as in prepare_energy_totals.py).
+        for country, years in (snakemake.config.get("demand_growth_override") or {}).items():
+            v = years.get(int(snakemake.wildcards.planning_horizons))
+            if v is not None and country in cagr.index:
+                row = cagr.loc[country]
+                cagr.loc[country] = row.where(row == 0, v)
+
         growth_factors = calculate_end_values(cagr)
 
         industry_base_totals = read_csv_nafix(

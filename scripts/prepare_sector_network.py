@@ -3401,6 +3401,17 @@ if __name__ == "__main__":
     # Add hydrogen related technologies
     add_hydrogen(n, costs)
 
+    # Taiwan fork: optional hydrogen imports at a fixed landed price
+    # (sector.hydrogen_import.price_EUR_per_MWh), unlimited, at every hydrogen bus.
+    h2_import = options.get("hydrogen_import") or {}
+    if h2_import.get("price_EUR_per_MWh") is not None:
+        h2_buses = n.buses.index[n.buses.carrier == "H2"]
+        if "H2 import" not in n.carriers.index:
+            n.add("Carrier", "H2 import")
+        n.madd("Generator", h2_buses + " import", bus=h2_buses, carrier="H2 import",
+               p_nom_extendable=True, marginal_cost=h2_import["price_EUR_per_MWh"])
+        logger.info(f"Hydrogen imports at {h2_import['price_EUR_per_MWh']} EUR/MWh on {len(h2_buses)} buses")
+
     # Add storage using carried-over capacities
     add_storage(n, costs)
 

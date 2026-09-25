@@ -596,8 +596,10 @@ def attach_wind_and_solar(
                         * costs.at[carrier + "-connection-underground", "capital_cost"]
                     )
                 )
+                # Taiwan fork: floating turbines (offwind-float) have their own cost row
+                turbine = carrier if carrier == "offwind-float" and carrier in costs.index else "offwind"
                 capital_cost = (
-                    costs.at["offwind", "capital_cost"]
+                    costs.at[turbine, "capital_cost"]
                     + costs.at[carrier + "-station", "capital_cost"]
                     + connection_cost
                 )
@@ -702,7 +704,7 @@ def attach_wind_and_solar(
             suffix = " " + carrier
 
             renewable_lifetime = (
-                costs.at["offwind", "lifetime"]
+                costs.at[carrier if carrier == "offwind-float" and carrier in costs.index else "offwind", "lifetime"]
                 if supcarrier == "offwind"
                 else costs.at[carrier, "lifetime"]
             )

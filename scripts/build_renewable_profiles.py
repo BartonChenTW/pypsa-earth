@@ -729,6 +729,14 @@ if __name__ == "__main__":
                 paths.gebco, codes=func_depth, crs=GEBCO_CRS, nodata=-1000
             )
 
+        if check_flag(config, "min_depth"):
+            # Taiwan fork: for floating offshore wind, exclude areas shallower than min_depth,
+            # i.e. where the grid cell depth > -min_depth (land counts as shallow)
+            func_min_depth = functools.partial(np.less, -config["min_depth"])
+            excluder.add_raster(
+                paths.gebco, codes=func_min_depth, crs=GEBCO_CRS, nodata=-1000
+            )
+
         if check_flag(config, "min_shore_distance"):
             buffer = config["min_shore_distance"]
             excluder.add_geometry(paths.country_shapes, buffer=buffer)
