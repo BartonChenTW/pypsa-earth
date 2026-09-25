@@ -1043,9 +1043,10 @@ def add_lossy_bidirectional_link_constraints(n: pypsa.components.Network) -> Non
 
 
 def _current_horizon():
+    """Planning horizon of this solve; None outside a myopic Snakemake run (e.g. the sandbox)."""
     try:
         return int(snakemake.wildcards.get("planning_horizons"))
-    except (NameError, TypeError, ValueError):
+    except (NameError, AttributeError, TypeError, ValueError):
         return None
 
 
