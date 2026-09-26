@@ -2,7 +2,7 @@
 
 This folder is the PyPSA-Earth model checkout for the Taiwan study (fork BartonChenTW/pypsa-earth,
 branch `taiwan`: upstream PyPSA-Earth plus the Taiwan-specific options, marked `Taiwan fork` in the
-code). It holds the Python environment `.venv`, the data bundle, cutouts and all outputs.
+code, all listed in `FORK_CHANGES.md`; keep that list up to date). It holds the Python environment `.venv`, the data bundle, cutouts and all outputs.
 
 The study itself (Taiwan configs and data, sandbox, exporter, website, notes) is the repository
 BartonChenTW/taiwan-energy-model, checked out next to this folder at
