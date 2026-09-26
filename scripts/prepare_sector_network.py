@@ -3302,6 +3302,11 @@ def add_taiwan_power_options(n: pypsa.Network, costs: pd.DataFrame) -> None:
       unlimited, at every ammonia bus; it can be cracked to hydrogen (existing cracker).
     - ammonia_ccgt: ammonia-fired combined cycle ("NH3 CCGT"), CCGT cost, CCGT efficiency
       times efficiency_factor.
+    - efuel_import_price_EUR_per_MWh: {oil: price, gas: price}, synthetic (carbon-neutral) oil
+      and methane imports at every oil or gas bus ("synthetic oil import", "synthetic gas
+      import"). Oil demand books its CO2 as fixed emissions whatever the source, and gas
+      users emit at the point of use, so an import takes its carbon content from the
+      atmosphere: a link from "co2 atmosphere" (tCO2) to the fuel bus.
     """
     tw = options.get("taiwan_power") or {}
     if not tw:
@@ -3368,6 +3373,28 @@ def add_taiwan_power_options(n: pypsa.Network, costs: pd.DataFrame) -> None:
             spatial.ammonia.df.loc[nodes, "nodes"].values,
             ccgt["efficiency"] * nh3_ccgt["efficiency_factor"],
         )
+
+    fuel_buses = {"oil": spatial.oil.nodes, "gas": spatial.gas.nodes}
+    for fuel, price in (tw.get("efuel_import_price_EUR_per_MWh") or {}).items():
+        carrier = f"synthetic {fuel} import"
+        buses = pd.Index(fuel_buses[fuel])
+        missing = buses.difference(n.buses.index)
+        if not missing.empty:
+            raise ValueError(f"{carrier}: fuel buses {list(missing)} do not exist")
+        if carrier not in n.carriers.index:
+            n.add("Carrier", carrier)
+        intensity = costs.at[fuel, "CO2 intensity"]  # tCO2 per MWh of fuel
+        n.madd(
+            "Link",
+            buses + " synthetic import",
+            bus0="co2 atmosphere",
+            bus1=buses,
+            carrier=carrier,
+            p_nom_extendable=True,
+            efficiency=1 / intensity,  # MWh of fuel per tCO2 taken from the atmosphere
+            marginal_cost=price / intensity,  # per tCO2, i.e. price per MWh of fuel
+        )
+        logger.info(f"Synthetic {fuel} imports at {price} EUR/MWh")
 
 
 def remove_carrier_related_components(n: pypsa.Network, carriers_to_drop: list) -> None:
@@ -3526,8 +3553,6 @@ if __name__ == "__main__":
     if options["ammonia"]["enable"]:
         add_ammonia(n, costs, industrial_demand_fn=snakemake.input.industrial_demand)
 
-    # Taiwan fork: gas with capture, hydrogen/ammonia power, ammonia imports
-    add_taiwan_power_options(n, costs)
 
     if enable["shipping"]:
         add_shipping(
@@ -3589,6 +3614,10 @@ if __name__ == "__main__":
             break
 
     co2_budget = snakemake.params.co2_budget
+    # Taiwan fork: gas with capture, hydrogen/ammonia power, ammonia and synthetic fuel imports
+    # (after all sectors, so that the oil and gas buses exist)
+    add_taiwan_power_options(n, costs)
+
     if co2_budget["enable"]:
         add_co2_budget(
             n,
