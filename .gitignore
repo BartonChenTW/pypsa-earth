@@ -82,12 +82,3 @@ site/
 .venv
 
 log.md
-# Taiwan source data, mappings and snapshots are tracked on purpose
-# (the global *.csv / *.zip rules above would drop them).
-!pypsa_tw/data/**/*.csv
-!pypsa_tw/data/**/*.zip
-!docs/data/*.csv
-# Taiwan future-year fleets (pypsa_tw/data/build_future_powerplants.py)
-!data/custom_powerplants_tw*.csv
-# Energy balance workbook (Energy Administration), read by pypsa_tw/data/build_timeseries.py
-!pypsa_tw/data/official/*.xlsx

@@ -1,3 +1,5 @@
+> **This fork** (BartonChenTW/pypsa-earth, branch `taiwan`) adds Taiwan-specific options to PyPSA-Earth, marked `Taiwan fork` in the code. The Taiwan study, its data and website are in [BartonChenTW/taiwan-energy-model](https://github.com/BartonChenTW/taiwan-energy-model) ([website](https://bartonchentw.github.io/taiwan-energy-model/)).
+
 <!--
 SPDX-FileCopyrightText:  PyPSA-Earth and PyPSA-Eur Authors
 
